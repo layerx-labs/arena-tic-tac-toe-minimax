@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Arena Tic-Tac-Toe</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --cell-bg: #12121a;
+      --cell-border: #2a2a3a;
+      --neon-x: #00f0ff;
+      --neon-o: #ff00aa;
+      --neon-win: #ffff00;
+      --text: #e0e0ff;
+      --glow-x: 0 0 10px #00f0ff, 0 0 20px #00f0ff55;
+      --glow-o: 0 0 10px #ff00aa, 0 0 20px #ff00aa55;
+      --glow-win: 0 0 15px #ffff00, 0 0 30px #ffff0088;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: clamp(1.4rem, 5vw, 2rem);
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      margin-bottom: 8px;
+      text-shadow: 0 0 10px #00f0ff88;
+    }
+
+    #status {
+      font-size: 1.1rem;
+      margin-bottom: 20px;
+      min-height: 1.5em;
+      transition: color 0.3s;
+    }
+
+    #status.x-turn { color: var(--neon-x); text-shadow: var(--glow-x); }
+    #status.o-turn { color: var(--neon-o); text-shadow: var(--glow-o); }
+    #status.win    { color: var(--neon-win); text-shadow: var(--glow-win); }
+    #status.draw   { color: #888; }
+
+    #board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      width: min(340px, 90vw);
+      aspect-ratio: 1;
+    }
+
+    .cell {
+      background: var(--cell-bg);
+      border: 1px solid var(--cell-border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(2.5rem, 12vw, 4.5rem);
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+      user-select: none;
+    }
+
+    .cell:hover:not(.taken):not(.game-over) {
+      background: #1a1a28;
+      box-shadow: inset 0 0 20px #ffffff08;
+    }
+
+    .cell.taken { cursor: default; }
+    .cell.game-over { cursor: default; }
+
+    .cell.x-mark {
+      color: var(--neon-x);
+      text-shadow: var(--glow-x);
+    }
+
+    .cell.o-mark {
+      color: var(--neon-o);
+      text-shadow: var(--glow-o);
+    }
+
+    .cell.winner {
+      background: #1e1e0e;
+      box-shadow: var(--glow-win);
+      animation: pulse-win 0.6s ease-in-out infinite alternate;
+    }
+
+    @keyframes pulse-win {
+      from { box-shadow: var(--glow-win); }
+      to   { box-shadow: 0 0 25px #ffff00, 0 0 50px #ffff00aa; }
+    }
+
+    #reset-btn {
+      margin-top: 24px;
+      padding: 10px 28px;
+      font-size: 1rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      background: transparent;
+      border: 2px solid #444;
+      color: #888;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, box-shadow 0.2s;
+    }
+
+    #reset-btn:hover {
+      border-color: var(--neon-x);
+      color: var(--neon-x);
+      box-shadow: 0 0 12px #00f0ff44;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Neon Arena Tic-Tac-Toe</h1>
+  <div id="status" class="x-turn">X's turn</div>
+
+  <div id="board">
+    <div class="cell" data-index="0"></div>
+    <div class="cell" data-index="1"></div>
+    <div class="cell" data-index="2"></div>
+    <div class="cell" data-index="3"></div>
+    <div class="cell" data-index="4"></div>
+    <div class="cell" data-index="5"></div>
+    <div class="cell" data-index="6"></div>
+    <div class="cell" data-index="7"></div>
+    <div class="cell" data-index="8"></div>
+  </div>
+
+  <button id="reset-btn">New Game</button>
+
+  <script>
+    // ── State ──────────────────────────────────────────────
+    let currentPlayer = 'X';
+    let board = Array(9).fill(null);
+    let gameOver = false;
+
+    // ── Win lines (indices) ────────────────────────────────
+    const WIN_LINES = [
+      [0, 1, 2], // top row
+      [3, 4, 5], // middle row
+      [6, 7, 8], // bottom row
+      [0, 3, 6], // left col
+      [1, 4, 7], // middle col
+      [2, 5, 8], // right col
+      [0, 4, 8], // diag ↘
+      [2, 4, 6], // diag ↙
+    ];
+
+    // ── DOM refs ──────────────────────────────────────────
+    const cells    = document.querySelectorAll('.cell');
+    const statusEl = document.getElementById('status');
+    const resetBtn = document.getElementById('reset-btn');
+
+    // ── Core logic ────────────────────────────────────────
+    function checkWinner() {
+      for (const line of WIN_LINES) {
+        const [a, b, c] = line;
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+          return { winner: board[a], line };
+        }
+      }
+      return null;
+    }
+
+    function checkDraw() {
+      return board.every(cell => cell !== null);
+    }
+
+    function updateStatus() {
+      statusEl.className = '';
+      if (gameOver) return;
+      statusEl.textContent = `${currentPlayer}'s turn`;
+      statusEl.classList.add(currentPlayer === 'X' ? 'x-turn' : 'o-turn');
+    }
+
+    function showResult(result) {
+      gameOver = true;
+      statusEl.className = '';
+
+      if (result) {
+        // Highlight winning cells
+        for (const idx of result.line) {
+          cells[idx].classList.add('winner');
+        }
+        statusEl.textContent = `${result.winner} wins!`;
+        statusEl.classList.add('win');
+      } else {
+        statusEl.textContent = "It's a draw!";
+        statusEl.classList.add('draw');
+      }
+
+      // Mark all cells as game-over
+      cells.forEach(cell => cell.classList.add('game-over'));
+    }
+
+    function handleCellClick(e) {
+      const idx = parseInt(e.target.dataset.index, 10);
+      if (isNaN(idx) || board[idx] !== null || gameOver) return;
+
+      // Place mark
+      board[idx] = currentPlayer;
+      e.target.textContent = currentPlayer === 'X' ? '×' : '○';
+      e.target.classList.add('taken', currentPlayer === 'X' ? 'x-mark' : 'o-mark');
+
+      // Check for winner
+      const result = checkWinner();
+      if (result) {
+        showResult(result);
+        return;
+      }
+
+      // Check for draw
+      if (checkDraw()) {
+        showResult(null);
+        return;
+      }
+
+      // Next turn
+      currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+      updateStatus();
+    }
+
+    function resetGame() {
+      board = Array(9).fill(null);
+      currentPlayer = 'X';
+      gameOver = false;
+      cells.forEach(cell => {
+        cell.textContent = '';
+        cell.className = 'cell';
+      });
+      updateStatus();
+    }
+
+    // ── Event listeners ────────────────────────────────────
+    cells.forEach(cell => cell.addEventListener('click', handleCellClick));
+    resetBtn.addEventListener('click', resetGame);
+
+    // Initialise status display
+    updateStatus();
+  </script>
+
+</body>
+</html>
